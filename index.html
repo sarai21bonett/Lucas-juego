@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Lucas al Ataque - Edición Fluida</title>
+    <title>Lucas al Ataque - Edición Interactiva</title>
     <style>
         /* ==========================================
            ESTILOS CSS BÁSICOS Y DE LOS VIDEOS
@@ -36,6 +36,18 @@
             transition: none !important; 
         }
 
+        /* NUEVO: Estilos del botón de omitir video */
+        #skipBtn {
+            position: absolute; top: 15px; right: 15px; z-index: 20;
+            background: rgba(0, 0, 0, 0.6);
+            color: white; border: 2px solid white;
+            padding: 8px 15px; border-radius: 20px;
+            font-weight: bold; font-size: 14px;
+            cursor: pointer; display: none;
+            transition: background 0.3s;
+        }
+        #skipBtn:hover { background: rgba(255, 255, 255, 0.3); }
+
         .controls-hint {
             margin-top: 15px; font-size: 14px; color: #94a3b8; text-align: center;
             line-height: 1.5; font-weight: 600;
@@ -45,6 +57,9 @@
 <body>
 
     <div id="gameContainer">
+        <!-- Botón para omitir el video -->
+        <button id="skipBtn">OMITIR ⏭</button>
+
         <video id="introVideo" class="game-video video-instant" playsinline>
             <source src="final.mp4" type="video/mp4">
         </video>
@@ -62,6 +77,7 @@
         const ctx = canvas.getContext("2d");
         const introVideo = document.getElementById("introVideo");
         const endVideo = document.getElementById("endVideo");
+        const skipBtn = document.getElementById("skipBtn"); // Referencia al botón de omitir
 
         // --- CARGA DE IMÁGENES ---
         const bgImg = new Image();
@@ -83,8 +99,6 @@
         let animFrame = 0; 
         let realTime = 0;  
         
-        // --- VELOCIDAD INICIAL (AQUÍ REDUCES EL INICIO) ---
-        // Cámbialo a 3 o 3.5 si lo quieres aún más lento al principio.
         let pathSpeed = 4; 
         let score = 0;     
         let caughtPeople = 0; 
@@ -100,9 +114,6 @@
         
         let obstacles = [];    
         let obstacleTimer = 0; 
-        
-        // --- FRECUENCIA INICIAL DE OBSTÁCULOS (AQUÍ REDUCES EL INICIO) ---
-        // Súbelo a 100 o 110 para que tarden más en aparecer los primeros árboles.
         let spawnRate = 90;    
         let forcedPedestrianCounter = 0; 
         let particles = [];    
@@ -110,26 +121,48 @@
         let pawPrints = [];
         let roadOffset = 0; 
 
-        // Funciones de video
+        // --- LÓGICA DE LOS VIDEOS Y EL BOTÓN OMITIR ---
         function startExperience() {
             gameState = 'VIDEO_INTRO';
             introVideo.style.display = 'block';
             introVideo.style.opacity = 1; 
+            skipBtn.style.display = 'block'; // Mostramos el botón de omitir
             introVideo.currentTime = 0;
             introVideo.play().catch(e => {
                 introVideo.style.display = 'none';
+                skipBtn.style.display = 'none';
                 gameState = 'MENU';
             });
         }
 
+        // Si el video de intro termina naturalmente
         introVideo.addEventListener('ended', () => {
             introVideo.style.display = 'none';
+            skipBtn.style.display = 'none'; // Ocultamos el botón
             gameState = 'MENU';
+        });
+
+        // Si el usuario hace clic en OMITIR
+        skipBtn.addEventListener('click', () => {
+            if (gameState === 'VIDEO_INTRO') {
+                introVideo.pause();
+                introVideo.style.display = 'none';
+                skipBtn.style.display = 'none';
+                gameState = 'MENU';
+            } 
+            else if (gameState === 'FINAL_VIDEO') {
+                endVideo.pause();
+                endVideo.style.display = 'none';
+                endVideo.style.opacity = 0;
+                skipBtn.style.display = 'none';
+                gameState = 'FINAL_SCREEN';
+            }
         });
 
         endVideo.addEventListener('ended', () => {
             endVideo.style.display = 'none';
             endVideo.style.opacity = 0; 
+            skipBtn.style.display = 'none';
             gameState = 'FINAL_SCREEN';
         });
 
@@ -204,11 +237,10 @@
             player.targetX = canvas.width / 2;
             obstacles = [];
             particles = [];
-            floatingTexts = []; // Limpiar textos flotantes
+            floatingTexts = []; 
             obstacleTimer = 0;
             roadOffset = 0;
             
-            // --- REINICIO DE VELOCIDADES ---
             pathSpeed = 4; 
             spawnRate = 90; 
             
@@ -229,7 +261,6 @@
             realTime += 0.016;
             animFrame += 0.15;
 
-            // -- Actualizar huellitas del menú de inicio --
             if (gameState === 'START_SCREEN') {
                 if (Math.random() < 0.08) { 
                     pawPrints.push({
@@ -255,6 +286,7 @@
                     gameState = 'FINAL_VIDEO';
                     
                     endVideo.style.display = 'block';
+                    skipBtn.style.display = 'block'; // Mostramos el botón de omitir también en el final
                     endVideo.currentTime = 0;
                     
                     setTimeout(() => { endVideo.style.opacity = 1; }, 50);
@@ -266,6 +298,7 @@
                         if (!videoStarted) {
                             endVideo.style.display = 'none';
                             endVideo.style.opacity = 0;
+                            skipBtn.style.display = 'none';
                             gameState = 'FINAL_SCREEN';
                         }
                     }, 2000); 
@@ -273,6 +306,7 @@
                     endVideo.play().catch(e => {
                         endVideo.style.display = 'none';
                         endVideo.style.opacity = 0;
+                        skipBtn.style.display = 'none';
                         gameState = 'FINAL_SCREEN';
                     });
                 }
@@ -283,11 +317,10 @@
 
             if (invulnerableTimer > 0) invulnerableTimer--;
 
-            // -- Actualizar textos flotantes ("+50") --
             for (let i = floatingTexts.length - 1; i >= 0; i--) {
                 let ft = floatingTexts[i];
-                ft.y -= 1.5; // Suben
-                ft.life -= 0.02; // Se desvanecen
+                ft.y -= 1.5; 
+                ft.life -= 0.02; 
                 if (ft.life <= 0) floatingTexts.splice(i, 1);
             }
 
@@ -306,7 +339,6 @@
             if (player.x < 40) player.x = 40;
             if (player.x > canvas.width - 40) player.x = canvas.width - 40;
 
-            // --- AUMENTO DE DIFICULTAD ---
             pathSpeed = 4 + (caughtPeople * 0.25); 
             spawnRate = Math.max(40, 90 - (caughtPeople * 3)); 
 
@@ -390,20 +422,17 @@
                     if (obs.type === 'trash') obsWidth = 40 * obs.size;
                     if (obs.type === 'bench') obsWidth = 70 * obs.size;
 
-                    // --- COLISIÓN CON PERSONA (MORDER) ---
                     if (obs.type === 'pedestrian' && Math.abs(player.x - obs.x) < (obsWidth / 2 + 15)) {
                         obs.caught = true;
                         score += 50; 
                         caughtPeople++;
                         
-                        // En lugar de la imagen, creamos el texto "+50" flotante
                         floatingTexts.push({
-                            x: player.x, // Aparece justo arriba del perro
+                            x: player.x, 
                             y: player.y - 50,
                             life: 1
                         });
                     } 
-                    // --- COLISIÓN CON OBSTÁCULO (PERDER VIDA) ---
                     else if (obs.type !== 'pedestrian' && Math.abs(player.x - obs.x) < (obsWidth / 2 + 10)) {
                         obs.caught = true; 
                         lives--; 
@@ -606,7 +635,18 @@
             });
         }
 
-        function drawButton(text, color1, color2) {
+        // --- NUEVA FUNCIÓN DE BOTÓN CON ANIMACIÓN ---
+        function drawButton(text, color1, color2, isAnimated = false) {
+            ctx.save();
+            
+            // Si isAnimated es true, el botón "late" (escala)
+            if (isAnimated) {
+                const scale = 1 + Math.sin(realTime * 5) * 0.05; // Efecto de latido
+                ctx.translate(canvas.width / 2, startBtn.y + startBtn.height / 2);
+                ctx.scale(scale, scale);
+                ctx.translate(-canvas.width / 2, -(startBtn.y + startBtn.height / 2));
+            }
+
             ctx.fillStyle = "rgba(0,0,0,0.3)"; ctx.beginPath(); ctx.roundRect(startBtn.x + 5, startBtn.y + 5, startBtn.width, startBtn.height, 16); ctx.fill();
             const btnGrad = ctx.createLinearGradient(startBtn.x, startBtn.y, startBtn.x, startBtn.y + startBtn.height);
             btnGrad.addColorStop(0, color1); btnGrad.addColorStop(1, color2);
@@ -614,6 +654,8 @@
             ctx.beginPath(); ctx.roundRect(startBtn.x, startBtn.y, startBtn.width, startBtn.height, 16); ctx.fill(); ctx.stroke();
             ctx.fillStyle = "#fff"; ctx.font = "bold 22px 'Segoe UI', sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
             ctx.fillText(text, canvas.width / 2, startBtn.y + startBtn.height / 2);
+            
+            ctx.restore();
             ctx.textAlign = "start"; ctx.textBaseline = "alphabetic";
         }
 
@@ -659,20 +701,17 @@
             ctx.restore();
         }
 
-        // --- NUEVA FUNCIÓN PARA DIBUJAR EL "+50" FLOTANTE ---
         function drawFloatingTexts() {
             floatingTexts.forEach(ft => {
                 ctx.save();
                 ctx.globalAlpha = Math.max(0, ft.life);
                 
-                // Borde negro para que resalte
                 ctx.font = "bold 28px 'Segoe UI', sans-serif";
                 ctx.textAlign = "center";
                 ctx.strokeStyle = "#111";
                 ctx.lineWidth = 5;
                 ctx.strokeText("+50", ft.x, ft.y);
                 
-                // Relleno amarillo brillante
                 ctx.fillStyle = "#F1C40F";
                 ctx.fillText("+50", ft.x, ft.y);
                 
@@ -744,7 +783,8 @@
                 ctx.fillText("Puntaje Final: " + score, canvas.width / 2, 360);
                 ctx.fillText("Personas mordidas: " + caughtPeople, canvas.width / 2, 390);
                 
-                drawButton("¡A JUGAR!", "#2ECC71", "#27AE60");
+                // Botón animado en la pantalla final
+                drawButton("¡A JUGAR!", "#2ECC71", "#27AE60", true);
                 ctx.textAlign = "start";
                 return;
             }
@@ -764,7 +804,8 @@
                 ctx.fillText("Atrapa a los peatones", canvas.width / 2, 290);
                 ctx.fillText("Esquiva los obstáculos", canvas.width / 2, 315);
                 
-                drawButton("¡A JUGAR!", "#2ECC71", "#27AE60");
+                // Botón animado en el menú
+                drawButton("¡A JUGAR!", "#2ECC71", "#27AE60", true);
                 drawVignette();
                 return;
             }
@@ -773,7 +814,7 @@
             drawSpeedEffects();  
             drawObstacles();     
             drawDogBack(player.x, player.y); 
-            drawFloatingTexts(); // DIBUJAMOS LOS TEXTOS "+50" AQUÍ
+            drawFloatingTexts(); 
             drawVignette();      
 
             ctx.fillStyle = "rgba(44, 62, 80, 0.8)"; 
