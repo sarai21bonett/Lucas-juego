@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Lucas al Ataque - Edición Final</title>
+    <title>Lucas al Ataque - Edición Balanceada</title>
     <style>
         /* ==========================================
            ESTILOS CSS BÁSICOS Y DE LOS VIDEOS
@@ -48,12 +48,12 @@
 <body>
 
     <div id="gameContainer">
-        <!-- VIDEO DE INTRO: Asegúrate de tener el archivo 'intro.mp4' -->
+        <!-- VIDEO DE INTRO: Aquí cargaste tu video de introducción -->
         <video id="introVideo" class="game-video video-instant" playsinline>
             <source src="final.mp4" type="video/mp4">
         </video>
 
-        <!-- VIDEO FINAL: Asegúrate de tener el archivo 'final.mp4' -->
+        <!-- VIDEO FINAL: Aquí cargaste el video del final -->
         <video id="endVideo" class="game-video" playsinline>
             <source src="intro.mp4" type="video/mp4">
         </video>
@@ -72,6 +72,7 @@
         const endVideo = document.getElementById("endVideo");
 
         // --- CARGA DE IMÁGENES ---
+        // Si cambias el nombre de tus archivos, cámbialo aquí también.
         const bgImg = new Image();
         bgImg.src = 'fondo.jpg'; 
 
@@ -87,8 +88,8 @@
         const dogStartImg = new Image();
         dogStartImg.src = 'lucas.jpeg'; 
 
-        const OUTLINE = "#111"; 
-        const LW = 2.5; 
+        const OUTLINE = "#111"; // Color del borde de los dibujos
+        const LW = 2.5; // Grosor de la línea del borde
 
         /* ==========================================
            2. VARIABLES DE ESTADO DEL JUEGO
@@ -97,7 +98,9 @@
         let animFrame = 0; 
         let realTime = 0;  
         
-        let pathSpeed = 6; 
+        // --- VELOCIDAD INICIAL (CAMBIO DE BALANCE) ---
+        // Antes era 6, ahora es 4. El juego empieza más lento.
+        let pathSpeed = 4; 
         let score = 0;     
         let caughtPeople = 0; 
         let lives = 3;     
@@ -114,7 +117,10 @@
         
         let obstacles = [];    
         let obstacleTimer = 0; 
-        let spawnRate = 65;    
+        
+        // --- FRECUENCIA INICIAL DE OBSTÁCULOS (CAMBIO DE BALANCE) ---
+        // Antes era 65, ahora es 90. Tardan más en aparecer al principio.
+        let spawnRate = 90;    
         let forcedPedestrianCounter = 0; 
         let particles = [];    
 
@@ -226,8 +232,11 @@
             obstacleTimer = 0;
             roadOffset = 0;
             isBiting = false;
-            pathSpeed = 6;
-            spawnRate = 65; 
+            
+            // --- REINICIO DE VELOCIDADES (CAMBIO DE BALANCE) ---
+            pathSpeed = 4; // Reinicia lento
+            spawnRate = 90; // Reinicia con obstáculos lentos
+            
             forcedPedestrianCounter = 0;
             fadeAlpha = 0;
             endVideo.style.opacity = 0; 
@@ -237,7 +246,7 @@
             gameState = 'PLAYING';
             obstacles = []; 
             obstacleTimer = 0;
-            invulnerableTimer = 120; 
+            invulnerableTimer = 120; // 2 segundos de invulnerabilidad
         }
 
         /* ==========================================
@@ -266,6 +275,7 @@
                 return; 
             }
 
+            // -- Transición al final (Fundido a negro) --
             if (gameState === 'TRANSITION_TO_END') {
                 fadeAlpha += 0.02; 
                 if (fadeAlpha >= 1) {
@@ -330,8 +340,11 @@
             if (player.x < 40) player.x = 40;
             if (player.x > canvas.width - 40) player.x = canvas.width - 40;
 
-            pathSpeed = 6 + (caughtPeople * 0.3); 
-            spawnRate = Math.max(35, 65 - (caughtPeople * 2)); 
+            // --- AUMENTO DE DIFICULTAD PROGRESIVO (CAMBIO DE BALANCE) ---
+            // Aquí es donde la velocidad va subiendo poco a poco.
+            pathSpeed = 4 + (caughtPeople * 0.25); 
+            // Aquí los obstáculos empiezan a salir más seguido.
+            spawnRate = Math.max(40, 90 - (caughtPeople * 3)); 
 
             roadOffset += pathSpeed;
             if (roadOffset >= 60) roadOffset = 0; 
@@ -348,7 +361,9 @@
             obstacleTimer++;
             if (obstacleTimer > spawnRate) {
                 let numObstacles = 1;
-                if (caughtPeople >= 3) numObstacles = 2; 
+                // --- OBSTÁCULOS DOBLES MÁS TARDE (CAMBIO DE BALANCE) ---
+                // Antes salían a las 3 personas, ahora salen a las 5.
+                if (caughtPeople >= 5) numObstacles = 2; 
 
                 let lanes = [0, 1, 2].sort(() => Math.random() - 0.5);
                 let selectedLanes = lanes.slice(0, numObstacles);
@@ -436,7 +451,7 @@
         }
 
         /* ==========================================
-           7. FUNCIONES DE DIBUJO
+           7. FUNCIONES DE DIBUJO (GRÁFICOS)
            ========================================== */
         
         function drawShadow(x, y, w, h) {
@@ -495,6 +510,7 @@
 
             drawShadow(x, y + 30, 25, 8);
 
+            // Cola del perro
             const tailGrad = ctx.createLinearGradient(x - 20, y - 20, x - 15, y);
             tailGrad.addColorStop(0, "#D2B48C");
             tailGrad.addColorStop(1, "#C19A6B");
@@ -504,26 +520,31 @@
             ctx.quadraticCurveTo(x - 25, y - 15 + walk, x - 20, y - 25 + walk);
             ctx.stroke();
 
+            // Patas
             ctx.fillStyle = "#F5DEB3";
             ctx.beginPath(); ctx.roundRect(x - 14, y + 10 + walk, 8, 20, 4); ctx.fill(); ctx.stroke();
             ctx.beginPath(); ctx.roundRect(x + 6, y + 10 - walk, 8, 20, 4); ctx.fill(); ctx.stroke();
 
+            // Cuerpo
             const bodyGrad = ctx.createLinearGradient(x - 15, y - 15, x + 15, y + 10);
             bodyGrad.addColorStop(0, "#E6C280");
             bodyGrad.addColorStop(1, "#C19A6B");
             ctx.fillStyle = bodyGrad;
             ctx.beginPath(); ctx.roundRect(x - 18, y - 15, 36, 28, 12); ctx.fill(); ctx.stroke();
 
+            // Manchas blancas
             ctx.fillStyle = "#FFF8DC";
             ctx.beginPath(); ctx.ellipse(x - 6, y - 5, 10, 14, -0.2, 0, Math.PI*2); ctx.fill();
             ctx.beginPath(); ctx.ellipse(x + 10, y + 5, 7, 12, 0.2, 0, Math.PI*2); ctx.fill();
 
+            // Cabeza
             const headGrad = ctx.createRadialGradient(x - 5, y - 40, 2, x, y - 35, 18);
             headGrad.addColorStop(0, "#E6C280");
             headGrad.addColorStop(1, "#C19A6B");
             ctx.fillStyle = headGrad;
             ctx.beginPath(); ctx.arc(x, y - 35, 18, 0, Math.PI*2); ctx.fill(); ctx.stroke();
 
+            // Orejas
             const earGrad = ctx.createLinearGradient(x - 20, y - 40, x - 10, y - 20);
             earGrad.addColorStop(0, "#C19A6B");
             earGrad.addColorStop(1, "#8B5A2B");
@@ -531,9 +552,11 @@
             ctx.beginPath(); ctx.ellipse(x - 15, y - 35, 6, 14, -0.5, 0, Math.PI*2); ctx.fill(); ctx.stroke();
             ctx.beginPath(); ctx.ellipse(x + 15, y - 35, 6, 14, 0.5, 0, Math.PI*2); ctx.fill(); ctx.stroke();
 
+            // Hocico trasero
             ctx.fillStyle = "#FFF8DC";
             ctx.beginPath(); ctx.ellipse(x, y - 45, 7, 6, 0, 0, Math.PI*2); ctx.fill(); ctx.stroke();
 
+            // Collar
             ctx.strokeStyle = "#009688"; ctx.lineWidth = 5;
             ctx.beginPath(); ctx.moveTo(x - 15, y - 18); ctx.lineTo(x + 15, y - 18); ctx.stroke();
             const plaqueGrad = ctx.createRadialGradient(x, y - 18, 1, x, y - 18, 5);
@@ -556,7 +579,7 @@
                 ctx.drawImage(img, x - imgW / 2, y - imgH + (20 * s), imgW, imgH);
                 ctx.restore();
             } else {
-                ctx.fillStyle = "magenta";
+                ctx.fillStyle = "magenta"; // Cuadro rosa si falta la imagen
                 ctx.fillRect(x - 20 * s, y - 40 * s, 40 * s, 50 * s);
             }
         }
@@ -712,21 +735,16 @@
             }
         }
 
-        // ==========================================
-        // DIBUJAR EL EMOJI DE PATITA 🐾
-        // ==========================================
         function drawPawPrint(x, y, size, rotation, alpha) {
             ctx.save();
             ctx.translate(x, y);
             ctx.rotate(rotation);
             ctx.globalAlpha = alpha;
             
-            // Configuramos el tamaño y la fuente para el emoji
-            ctx.font = `${size * 2}px Arial`; // Multiplicamos por 2 para que se vea bien grande
+            ctx.font = `${size * 2}px Arial`; 
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
             
-            // Escribimos el emoji de la huella
             ctx.fillText("🐾", 0, 0);
             
             ctx.restore();
