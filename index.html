@@ -335,7 +335,7 @@
 
             // --- NUEVA LÓGICA DE DIFICULTAD PROGRESIVA ---
             // Solo empieza a subir después de 20 mordidas.
-            if (caughtPeople < 15) {
+            if (caughtPeople < 10) {
                 // Durante las primeras 20, todo se mantiene suave y constante
                 pathSpeed = 4;
                 spawnRate = 90;
@@ -363,7 +363,7 @@
             if (obstacleTimer > spawnRate) {
                 let numObstacles = 1;
                 // Los obstáculos dobles salen después de la mordida 25
-                if (caughtPeople >= 25) numObstacles = 2; 
+                if (caughtPeople >= 15) numObstacles = 2; 
 
                 let lanes = [0, 1, 2].sort(() => Math.random() - 0.5);
                 let selectedLanes = lanes.slice(0, numObstacles);
