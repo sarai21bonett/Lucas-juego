@@ -1,0 +1,870 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Lucas al Ataque - Edición Final</title>
+    <style>
+        /* ==========================================
+           ESTILOS CSS BÁSICOS Y DE LOS VIDEOS
+           ========================================== */
+        * { box-sizing: border-box; user-select: none; -webkit-user-select: none; }
+        body {
+            background: #0f172a; color: #fff; margin: 0;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            min-height: 100vh; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+        }
+        /* El contenedor principal del juego, tiene el tamaño de un celular */
+        #gameContainer {
+            position: relative; box-shadow: 0 20px 50px rgba(0,0,0,0.8), 0 0 0 4px #1e293b;
+            border-radius: 12px; overflow: hidden; background: #000;
+            width: 360px; height: 640px;
+        }
+        canvas { background: #87CEEB; display: block; touch-action: none; }
+        
+        /* Estilos generales para los videos (Intro y Final) */
+        .game-video {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            object-fit: contain; /* Ajusta el video sin deformarlo */
+            background-color: #000; /* Fondo negro por si el video es horizontal */
+            z-index: 10;
+            display: none; 
+            opacity: 0; /* Empiezan invisibles */
+            transition: opacity 1s ease-in-out; /* Transición suave de 1 seg */
+        }
+        
+        /* Clase para el video de la intro, para que entre de golpe sin desvanecerse */
+        .video-instant {
+            transition: none !important; 
+        }
+
+        .controls-hint {
+            margin-top: 15px; font-size: 14px; color: #94a3b8; text-align: center;
+            line-height: 1.5; font-weight: 600;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="gameContainer">
+        <!-- VIDEO DE INTRO: Asegúrate de tener el archivo 'intro.mp4' -->
+        <video id="introVideo" class="game-video video-instant" playsinline>
+            <source src="final.mp4" type="video/mp4">
+        </video>
+
+        <!-- VIDEO FINAL: Asegúrate de tener el archivo 'final.mp4' -->
+        <video id="endVideo" class="game-video" playsinline>
+            <source src="intro.mp4" type="video/mp4">
+        </video>
+        
+        <canvas id="gameCanvas" width="360" height="640"></canvas>
+    </div>
+    <p class="controls-hint">PC: ← → para moverte.<br>Móvil: Desliza el dedo por la pantalla.</p>
+
+    <script>
+        /* ==========================================
+           1. CONFIGURACIÓN INICIAL Y CARGA DE IMÁGENES
+           ========================================== */
+        const canvas = document.getElementById("gameCanvas");
+        const ctx = canvas.getContext("2d");
+        const introVideo = document.getElementById("introVideo");
+        const endVideo = document.getElementById("endVideo");
+
+        // --- CARGA DE IMÁGENES ---
+        const bgImg = new Image();
+        bgImg.src = 'fondo.jpg'; 
+
+        const pedImgs = [new Image(), new Image(), new Image(), new Image()];
+        pedImgs[0].src = 'img1.png'; 
+        pedImgs[1].src = 'img2.png'; 
+        pedImgs[2].src = 'img3.png'; 
+        pedImgs[3].src = 'img4.png'; 
+
+        const biteImg = new Image();
+        biteImg.src = 'lucas_muerde.jpg'; 
+
+        const dogStartImg = new Image();
+        dogStartImg.src = 'lucas.jpeg'; 
+
+        const OUTLINE = "#111"; 
+        const LW = 2.5; 
+
+        /* ==========================================
+           2. VARIABLES DE ESTADO DEL JUEGO
+           ========================================== */
+        let gameState = 'START_SCREEN'; 
+        let animFrame = 0; 
+        let realTime = 0;  
+        
+        let pathSpeed = 6; 
+        let score = 0;     
+        let caughtPeople = 0; 
+        let lives = 3;     
+        let invulnerableTimer = 0; 
+        let fadeAlpha = 0; 
+
+        let isBiting = false;
+        let biteTimer = 0;
+        const biteDuration = 70; 
+        let biteAnimScale = 0;   
+
+        const startBtn = { x: 60, y: 460, width: 240, height: 60 }; 
+        const player = { x: canvas.width / 2, y: canvas.height - 120, targetX: canvas.width / 2 }; 
+        
+        let obstacles = [];    
+        let obstacleTimer = 0; 
+        let spawnRate = 65;    
+        let forcedPedestrianCounter = 0; 
+        let particles = [];    
+
+        let pawPrints = [];
+        let roadOffset = 0; 
+
+        /* ==========================================
+           3. FUNCIONES DE CAMBIO DE ESTADO (VIDEOS)
+           ========================================== */
+        function startExperience() {
+            gameState = 'VIDEO_INTRO';
+            introVideo.style.display = 'block';
+            introVideo.style.opacity = 1; 
+            introVideo.currentTime = 0;
+            introVideo.play().catch(e => {
+                introVideo.style.display = 'none';
+                gameState = 'MENU';
+            });
+        }
+
+        introVideo.addEventListener('ended', () => {
+            introVideo.style.display = 'none';
+            gameState = 'MENU';
+        });
+
+        endVideo.addEventListener('ended', () => {
+            endVideo.style.display = 'none';
+            endVideo.style.opacity = 0; 
+            gameState = 'FINAL_SCREEN';
+        });
+
+        /* ==========================================
+           4. CONTROLES DEL JUGADOR
+           ========================================== */
+        const keys = { ArrowLeft: false, ArrowRight: false };
+
+        window.addEventListener("keydown", (e) => {
+            if (keys.hasOwnProperty(e.code)) keys[e.code] = true;
+            
+            if (gameState === 'START_SCREEN') {
+                startExperience();
+                return;
+            }
+
+            if (e.code === "Space" && (gameState === 'GAMEOVER' || gameState === 'MENU' || gameState === 'FINAL_SCREEN')) {
+                if (gameState === 'GAMEOVER') {
+                    if (lives > 0) retryGame();
+                    else playFinalSequence();
+                }
+                else startGame();
+            }
+        });
+        window.addEventListener("keyup", (e) => {
+            if (keys.hasOwnProperty(e.code)) keys[e.code] = false;
+        });
+
+        canvas.addEventListener("click", (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const clickX = e.clientX - rect.left;
+            const clickY = e.clientY - rect.top;
+
+            if (gameState === 'START_SCREEN') {
+                startExperience();
+                return;
+            }
+            
+            if (gameState === 'MENU' || gameState === 'FINAL_SCREEN') {
+                if (clickX >= startBtn.x && clickX <= startBtn.x + startBtn.width &&
+                    clickY >= startBtn.y && clickY <= startBtn.y + startBtn.height) {
+                    startGame();
+                }
+            }
+            else if (gameState === 'GAMEOVER') {
+                if (clickX >= startBtn.x && clickX <= startBtn.x + startBtn.width &&
+                    clickY >= startBtn.y && clickY <= startBtn.y + startBtn.height) {
+                    if (lives > 0) retryGame();
+                    else playFinalSequence();
+                }
+            }
+        });
+
+        canvas.addEventListener("touchmove", (e) => {
+            if (gameState !== 'PLAYING' || isBiting) return;
+            e.preventDefault();
+            const rect = canvas.getBoundingClientRect();
+            const touchX = e.touches[0].clientX - rect.left;
+            if (touchX >= 40 && touchX <= canvas.width - 40) {
+                player.targetX = touchX;
+            }
+        }, { passive: false });
+
+        /* ==========================================
+           5. LÓGICA DE INICIO Y REINICIO
+           ========================================== */
+        function playFinalSequence() {
+            gameState = 'TRANSITION_TO_END'; 
+        }
+
+        function startGame() {
+            gameState = 'PLAYING';
+            score = 0;
+            caughtPeople = 0;
+            lives = 3; 
+            invulnerableTimer = 0;
+            player.x = canvas.width / 2;
+            player.targetX = canvas.width / 2;
+            obstacles = [];
+            particles = [];
+            obstacleTimer = 0;
+            roadOffset = 0;
+            isBiting = false;
+            pathSpeed = 6;
+            spawnRate = 65; 
+            forcedPedestrianCounter = 0;
+            fadeAlpha = 0;
+            endVideo.style.opacity = 0; 
+        }
+
+        function retryGame() {
+            gameState = 'PLAYING';
+            obstacles = []; 
+            obstacleTimer = 0;
+            invulnerableTimer = 120; 
+        }
+
+        /* ==========================================
+           6. FUNCIÓN UPDATE (EL MOTOR DEL JUEGO)
+           ========================================== */
+        function update() {
+            realTime += 0.016;
+            animFrame += 0.15;
+
+            // -- Actualizar huellitas del menú de inicio --
+            if (gameState === 'START_SCREEN') {
+                if (Math.random() < 0.08) { 
+                    pawPrints.push({
+                        x: Math.random() * canvas.width,
+                        y: canvas.height + 20,
+                        size: 15 + Math.random() * 10, 
+                        rotation: (Math.random() - 0.5) * 0.5,
+                        life: 1.5 
+                    });
+                }
+                for (let i = pawPrints.length - 1; i >= 0; i--) {
+                    pawPrints[i].y -= 1.5; 
+                    pawPrints[i].life -= 0.003; 
+                    if (pawPrints[i].life <= 0) pawPrints.splice(i, 1);
+                }
+                return; 
+            }
+
+            if (gameState === 'TRANSITION_TO_END') {
+                fadeAlpha += 0.02; 
+                if (fadeAlpha >= 1) {
+                    fadeAlpha = 1;
+                    gameState = 'FINAL_VIDEO';
+                    
+                    endVideo.style.display = 'block';
+                    endVideo.currentTime = 0;
+                    
+                    setTimeout(() => { endVideo.style.opacity = 1; }, 50);
+
+                    let videoStarted = false;
+                    endVideo.onplaying = () => { videoStarted = true; };
+                    
+                    setTimeout(() => {
+                        if (!videoStarted) {
+                            endVideo.style.display = 'none';
+                            endVideo.style.opacity = 0;
+                            gameState = 'FINAL_SCREEN';
+                        }
+                    }, 2000); 
+
+                    endVideo.play().catch(e => {
+                        endVideo.style.display = 'none';
+                        endVideo.style.opacity = 0;
+                        gameState = 'FINAL_SCREEN';
+                    });
+                }
+                return;
+            }
+
+            if (gameState !== 'PLAYING') return;
+
+            if (invulnerableTimer > 0) invulnerableTimer--;
+
+            for (let i = particles.length - 1; i >= 0; i--) {
+                let p = particles[i];
+                p.y += pathSpeed;
+                p.life--;
+                if (p.life <= 0) particles.splice(i, 1);
+            }
+
+            if (isBiting) {
+                biteTimer++;
+                if (biteTimer < 15) biteAnimScale = biteTimer / 15; 
+                else if (biteTimer > biteDuration - 10) biteAnimScale = (biteDuration - biteTimer) / 10;
+                else biteAnimScale = 1;
+
+                if (biteTimer > biteDuration) {
+                    isBiting = false;
+                    biteTimer = 0;
+                    biteAnimScale = 0;
+                }
+                return; 
+            }
+
+            if (keys.ArrowLeft) player.targetX -= 7;
+            if (keys.ArrowRight) player.targetX += 7;
+            
+            player.x += (player.targetX - player.x) * 0.2; 
+            
+            if (player.x < 40) player.x = 40;
+            if (player.x > canvas.width - 40) player.x = canvas.width - 40;
+
+            pathSpeed = 6 + (caughtPeople * 0.3); 
+            spawnRate = Math.max(35, 65 - (caughtPeople * 2)); 
+
+            roadOffset += pathSpeed;
+            if (roadOffset >= 60) roadOffset = 0; 
+
+            if (Math.random() < 0.3) {
+                particles.push({
+                    x: player.x + (Math.random() * 20 - 10),
+                    y: canvas.height - 70,
+                    size: 3 + Math.random() * 5,
+                    life: 20 + Math.random() * 20
+                });
+            }
+
+            obstacleTimer++;
+            if (obstacleTimer > spawnRate) {
+                let numObstacles = 1;
+                if (caughtPeople >= 3) numObstacles = 2; 
+
+                let lanes = [0, 1, 2].sort(() => Math.random() - 0.5);
+                let selectedLanes = lanes.slice(0, numObstacles);
+
+                selectedLanes.forEach((lane, index) => {
+                    let obsX = 50;
+                    if (lane === 1) obsX = canvas.width / 2;
+                    if (lane === 2) obsX = canvas.width - 50;
+
+                    forcedPedestrianCounter++; 
+
+                    let pedestrianChance = 0.20 + (caughtPeople * 0.01); 
+                    if (pedestrianChance > 0.40) pedestrianChance = 0.40; 
+                    
+                    let isTree = Math.random() > pedestrianChance;
+
+                    if (forcedPedestrianCounter >= 5) {
+                        isTree = false; 
+                        forcedPedestrianCounter = 0; 
+                    }
+                    if (!isTree) {
+                        forcedPedestrianCounter = 0; 
+                    }
+
+                    let obsType = 'pedestrian';
+                    if (isTree) {
+                        const r = Math.random();
+                        if (r < 0.5) obsType = 'trash';
+                        else obsType = 'bench';
+                    }
+
+                    let imgIdx = Math.floor(Math.random() * pedImgs.length);
+                    let yOffset = index === 1 ? 60 : 0; 
+                    let startAlpha = (obsType === 'pedestrian') ? 1 : 0;
+
+                    obstacles.push({ 
+                        x: obsX, 
+                        y: 150 - yOffset, 
+                        size: 0.3, 
+                        type: obsType,
+                        caught: false,
+                        imgIndex: imgIdx,
+                        alpha: startAlpha 
+                    });
+                });
+                obstacleTimer = 0;
+            }
+
+            for (let i = obstacles.length - 1; i >= 0; i--) {
+                const obs = obstacles[i];
+                obs.y += pathSpeed;
+                
+                let baseSize = (obs.type === 'pedestrian') ? 0.4 : 0.3;
+                obs.size = baseSize + ((obs.y - 150) / (canvas.height - 150)) * 1.1;
+
+                if (obs.type !== 'pedestrian' && obs.y > 200) {
+                    obs.alpha = Math.min(1, (obs.y - 200) / 150);
+                }
+
+                if (!obs.caught && invulnerableTimer <= 0 && obs.y > canvas.height - 200 && obs.y < canvas.height - 50) {
+                    let obsWidth = 60 * obs.size; 
+                    if (obs.type === 'trash') obsWidth = 40 * obs.size;
+                    if (obs.type === 'bench') obsWidth = 70 * obs.size;
+
+                    if (obs.type === 'pedestrian' && Math.abs(player.x - obs.x) < (obsWidth / 2 + 15)) {
+                        obs.caught = true;
+                        score += 50; 
+                        caughtPeople++;
+                        
+                        isBiting = true;
+                        biteTimer = 0;
+                        biteAnimScale = 0;
+                    } 
+                    else if (obs.type !== 'pedestrian' && Math.abs(player.x - obs.x) < (obsWidth / 2 + 10)) {
+                        obs.caught = true; 
+                        lives--; 
+                        gameState = 'GAMEOVER'; 
+                    }
+                }
+
+                if (obs.y > canvas.height + 100) {
+                    obstacles.splice(i, 1);
+                }
+            }
+        }
+
+        /* ==========================================
+           7. FUNCIONES DE DIBUJO
+           ========================================== */
+        
+        function drawShadow(x, y, w, h) {
+            const grad = ctx.createRadialGradient(x, y, 0, x, y, w);
+            grad.addColorStop(0, "rgba(0, 0, 0, 0.4)");
+            grad.addColorStop(1, "rgba(0, 0, 0, 0)");
+            ctx.fillStyle = grad;
+            ctx.beginPath(); ctx.ellipse(x, y, w, h, 0, 0, Math.PI * 2); ctx.fill();
+        }
+
+        function drawBackground() {
+            if (bgImg.complete && bgImg.naturalHeight !== 0) {
+                ctx.drawImage(bgImg, 0, 0, canvas.width, canvas.height);
+            } else {
+                ctx.fillStyle = "#87CEEB"; ctx.fillRect(0, 0, canvas.width, 150);
+                ctx.fillStyle = "#2ECC71"; ctx.fillRect(0, 150, canvas.width, canvas.height);
+            }
+        }
+
+        function drawSpeedEffects() {
+            ctx.save();
+            ctx.strokeStyle = "rgba(255, 255, 255, 0.6)"; 
+            ctx.lineWidth = 5; 
+            ctx.lineCap = "round";
+
+            for (let y = 180; y < canvas.height + 60; y += 60) {
+                let currentY = y + roadOffset;
+                if (currentY > canvas.height) continue; 
+
+                const progress = (currentY - 180) / (canvas.height - 180); 
+                
+                if (progress > 0) {
+                    ctx.beginPath();
+                    ctx.moveTo(canvas.width / 2, currentY);
+                    ctx.lineTo(canvas.width / 2, currentY + 10 + (progress * 15)); 
+                    ctx.stroke();
+                }
+            }
+            ctx.restore();
+        }
+
+        function drawDogBack(x, y) {
+            if (invulnerableTimer > 0 && Math.floor(realTime * 20) % 2 === 0) return;
+
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.scale(1.1, 1.1); 
+            ctx.translate(-x, -y);
+
+            ctx.strokeStyle = OUTLINE; ctx.lineWidth = LW;
+            
+            let walk = 0;
+            if (gameState === 'PLAYING') {
+                walk = Math.sin(animFrame * 6) * 8;
+            }
+
+            drawShadow(x, y + 30, 25, 8);
+
+            const tailGrad = ctx.createLinearGradient(x - 20, y - 20, x - 15, y);
+            tailGrad.addColorStop(0, "#D2B48C");
+            tailGrad.addColorStop(1, "#C19A6B");
+            ctx.strokeStyle = tailGrad; ctx.lineWidth = 8; ctx.lineCap = "round";
+            ctx.beginPath();
+            ctx.moveTo(x - 15, y - 5);
+            ctx.quadraticCurveTo(x - 25, y - 15 + walk, x - 20, y - 25 + walk);
+            ctx.stroke();
+
+            ctx.fillStyle = "#F5DEB3";
+            ctx.beginPath(); ctx.roundRect(x - 14, y + 10 + walk, 8, 20, 4); ctx.fill(); ctx.stroke();
+            ctx.beginPath(); ctx.roundRect(x + 6, y + 10 - walk, 8, 20, 4); ctx.fill(); ctx.stroke();
+
+            const bodyGrad = ctx.createLinearGradient(x - 15, y - 15, x + 15, y + 10);
+            bodyGrad.addColorStop(0, "#E6C280");
+            bodyGrad.addColorStop(1, "#C19A6B");
+            ctx.fillStyle = bodyGrad;
+            ctx.beginPath(); ctx.roundRect(x - 18, y - 15, 36, 28, 12); ctx.fill(); ctx.stroke();
+
+            ctx.fillStyle = "#FFF8DC";
+            ctx.beginPath(); ctx.ellipse(x - 6, y - 5, 10, 14, -0.2, 0, Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.ellipse(x + 10, y + 5, 7, 12, 0.2, 0, Math.PI*2); ctx.fill();
+
+            const headGrad = ctx.createRadialGradient(x - 5, y - 40, 2, x, y - 35, 18);
+            headGrad.addColorStop(0, "#E6C280");
+            headGrad.addColorStop(1, "#C19A6B");
+            ctx.fillStyle = headGrad;
+            ctx.beginPath(); ctx.arc(x, y - 35, 18, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+
+            const earGrad = ctx.createLinearGradient(x - 20, y - 40, x - 10, y - 20);
+            earGrad.addColorStop(0, "#C19A6B");
+            earGrad.addColorStop(1, "#8B5A2B");
+            ctx.fillStyle = earGrad;
+            ctx.beginPath(); ctx.ellipse(x - 15, y - 35, 6, 14, -0.5, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+            ctx.beginPath(); ctx.ellipse(x + 15, y - 35, 6, 14, 0.5, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+
+            ctx.fillStyle = "#FFF8DC";
+            ctx.beginPath(); ctx.ellipse(x, y - 45, 7, 6, 0, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+
+            ctx.strokeStyle = "#009688"; ctx.lineWidth = 5;
+            ctx.beginPath(); ctx.moveTo(x - 15, y - 18); ctx.lineTo(x + 15, y - 18); ctx.stroke();
+            const plaqueGrad = ctx.createRadialGradient(x, y - 18, 1, x, y - 18, 5);
+            plaqueGrad.addColorStop(0, "#FFF59D");
+            plaqueGrad.addColorStop(1, "#F1C40F");
+            ctx.fillStyle = plaqueGrad;
+            ctx.beginPath(); ctx.arc(x, y - 18, 4, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+
+            ctx.restore();
+        }
+
+        function drawPedestrianImage(x, y, s, imgIndex, alpha) {
+            const img = pedImgs[imgIndex];
+            
+            if (img && img.complete && img.naturalHeight !== 0) {
+                ctx.save();
+                ctx.globalAlpha = alpha; 
+                const imgW = 60 * s; 
+                const imgH = 100 * s; 
+                ctx.drawImage(img, x - imgW / 2, y - imgH + (20 * s), imgW, imgH);
+                ctx.restore();
+            } else {
+                ctx.fillStyle = "magenta";
+                ctx.fillRect(x - 20 * s, y - 40 * s, 40 * s, 50 * s);
+            }
+        }
+
+        function drawTrash(x, y, s, alpha) {
+            ctx.save();
+            ctx.globalAlpha = alpha; 
+            ctx.strokeStyle = OUTLINE; ctx.lineWidth = LW * s;
+            drawShadow(x, y + 15*s, 12*s, 5*s);
+
+            const trashGrad = ctx.createLinearGradient(x - 10*s, 0, x + 10*s, 0);
+            trashGrad.addColorStop(0, "#5D6D7E");
+            trashGrad.addColorStop(0.3, "#85929E");
+            trashGrad.addColorStop(0.7, "#AEB6BF");
+            trashGrad.addColorStop(1, "#566573");
+            
+            ctx.fillStyle = trashGrad;
+            ctx.beginPath(); ctx.roundRect(x - 10*s, y - 15*s, 20*s, 30*s, 4); ctx.fill(); ctx.stroke();
+            
+            ctx.strokeStyle = "#2C3E50"; ctx.lineWidth = 1.5*s;
+            ctx.beginPath(); ctx.moveTo(x - 6*s, y - 12*s); ctx.lineTo(x - 6*s, y + 12*s); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(x + 6*s, y - 12*s); ctx.lineTo(x + 6*s, y + 12*s); ctx.stroke();
+
+            ctx.fillStyle = "#111"; 
+            ctx.beginPath(); ctx.ellipse(x + 4*s, y - 15*s, 4*s, 3*s, 0.2, 0, Math.PI*2); ctx.fill();
+
+            ctx.fillStyle = "#2C3E50";
+            ctx.beginPath(); ctx.roundRect(x - 12*s, y - 19*s, 24*s, 5*s, 2); ctx.fill(); ctx.stroke();
+            
+            ctx.fillStyle = "#7F8C8D";
+            ctx.beginPath(); ctx.arc(x - 10*s, y - 16*s, 2*s, 0, Math.PI*2); ctx.fill();
+            ctx.restore();
+        }
+
+        function drawBench(x, y, s, alpha) {
+            ctx.save();
+            ctx.globalAlpha = alpha; 
+            ctx.strokeStyle = OUTLINE; ctx.lineWidth = LW * s;
+            drawShadow(x, y + 15*s, 25*s, 6*s);
+
+            const ironGrad = ctx.createLinearGradient(x - 15*s, 0, x - 11*s, 0);
+            ironGrad.addColorStop(0, "#2C3E50");
+            ironGrad.addColorStop(1, "#566573");
+            ctx.fillStyle = ironGrad;
+            ctx.beginPath(); ctx.roundRect(x - 15*s, y + 5*s, 4*s, 10*s, 2); ctx.fill(); ctx.stroke();
+            ctx.beginPath(); ctx.roundRect(x + 11*s, y + 5*s, 4*s, 10*s, 2); ctx.fill(); ctx.stroke();
+
+            const woodGrad = ctx.createLinearGradient(x, y - 5*s, x, y + 3*s);
+            woodGrad.addColorStop(0, "#C19A6B");
+            woodGrad.addColorStop(0.5, "#A1887F");
+            woodGrad.addColorStop(1, "#5D4037");
+            ctx.fillStyle = woodGrad;
+            ctx.beginPath(); ctx.roundRect(x - 20*s, y - 5*s, 40*s, 8*s, 3); ctx.fill(); ctx.stroke();
+
+            ctx.fillStyle = woodGrad;
+            ctx.beginPath(); ctx.roundRect(x - 20*s, y - 18*s, 40*s, 6*s, 3); ctx.fill(); ctx.stroke();
+            ctx.restore();
+        }
+
+        function drawObstacles() {
+            obstacles.sort((a, b) => a.y - b.y); 
+            obstacles.forEach(obs => {
+                if (obs.caught) return; 
+                
+                if (obs.type === 'trash') drawTrash(obs.x, obs.y, obs.size, obs.alpha);
+                else if (obs.type === 'bench') drawBench(obs.x, obs.y, obs.size, obs.alpha);
+                else drawPedestrianImage(obs.x, obs.y, obs.size, obs.imgIndex, obs.alpha); 
+            });
+        }
+
+        function drawButton(text, color1, color2) {
+            ctx.fillStyle = "rgba(0,0,0,0.3)"; ctx.beginPath(); ctx.roundRect(startBtn.x + 5, startBtn.y + 5, startBtn.width, startBtn.height, 16); ctx.fill();
+            const btnGrad = ctx.createLinearGradient(startBtn.x, startBtn.y, startBtn.x, startBtn.y + startBtn.height);
+            btnGrad.addColorStop(0, color1); btnGrad.addColorStop(1, color2);
+            ctx.fillStyle = btnGrad; ctx.strokeStyle = "#fff"; ctx.lineWidth = 3;
+            ctx.beginPath(); ctx.roundRect(startBtn.x, startBtn.y, startBtn.width, startBtn.height, 16); ctx.fill(); ctx.stroke();
+            ctx.fillStyle = "#fff"; ctx.font = "bold 22px 'Segoe UI', sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+            ctx.fillText(text, canvas.width / 2, startBtn.y + startBtn.height / 2);
+            ctx.textAlign = "start"; ctx.textBaseline = "alphabetic";
+        }
+
+        function drawBitePopup() {
+            if (biteTimer < 5) {
+                ctx.fillStyle = `rgba(255, 255, 255, ${1 - (biteTimer / 5)})`;
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+            }
+
+            ctx.fillStyle = "rgba(0, 0, 0, 0.6)";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            const boxW = 260, boxH = 260;
+            const boxX = canvas.width / 2 - boxW / 2;
+            const boxY = canvas.height / 2 - boxH / 2;
+
+            ctx.save();
+            ctx.translate(canvas.width / 2, canvas.height / 2);
+            ctx.scale(biteAnimScale, biteAnimScale);
+            ctx.translate(-canvas.width / 2, -canvas.height / 2);
+
+            ctx.fillStyle = "#fff"; ctx.strokeStyle = "#111"; ctx.lineWidth = 8;
+            ctx.beginPath(); ctx.roundRect(boxX, boxY, boxW, boxH, 20); ctx.fill(); ctx.stroke();
+
+            if (biteImg.complete && biteImg.naturalHeight !== 0) {
+                ctx.save();
+                ctx.beginPath(); ctx.roundRect(boxX + 8, boxY + 8, boxW - 16, boxH - 16, 12); ctx.clip();
+                ctx.drawImage(biteImg, boxX + 8, boxY + 8, boxW - 16, boxH - 16);
+                ctx.restore();
+            } else {
+                ctx.fillStyle = "#111"; ctx.font = "bold 20px 'Segoe UI', sans-serif"; ctx.textAlign = "center";
+                ctx.fillText("¡MORDIDA!", boxX + boxW/2, boxY + boxH/2 - 10);
+            }
+
+            ctx.fillStyle = "#F1C40F"; ctx.font = "bold 32px 'Segoe UI', sans-serif"; ctx.textAlign = "center";
+            ctx.strokeStyle = "#111"; ctx.lineWidth = 6;
+            ctx.strokeText("¡TE ATRAPÉ!", canvas.width / 2, boxY - 25);
+            ctx.fillText("¡TE ATRAPÉ!", canvas.width / 2, boxY - 25);
+            
+            ctx.fillStyle = "#fff"; ctx.font = "bold 20px 'Segoe UI', sans-serif";
+            ctx.strokeText("+50 PUNTOS", canvas.width / 2, boxY + boxH + 30);
+            ctx.fillText("+50 PUNTOS", canvas.width / 2, boxY + boxH + 30);
+
+            ctx.restore();
+            ctx.textAlign = "start";
+        }
+
+        function drawVignette() {
+            const grad = ctx.createRadialGradient(canvas.width/2, canvas.height/2, canvas.height/3, canvas.width/2, canvas.height/2, canvas.height/1.5);
+            grad.addColorStop(0, "rgba(0,0,0,0)");
+            grad.addColorStop(1, "rgba(0,0,0,0.4)");
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+        }
+
+        function drawLives() {
+            ctx.fillStyle = "rgba(44, 62, 80, 0.8)"; 
+            ctx.strokeStyle = "#1ABC9C"; ctx.lineWidth = 3;
+            ctx.beginPath(); ctx.roundRect(canvas.width - 120, 10, 110, 45, 10); ctx.fill(); ctx.stroke();
+            
+            ctx.fillStyle = "#fff"; ctx.font = "bold 16px 'Segoe UI', sans-serif";
+            ctx.fillText("VIDAS:", canvas.width - 110, 38);
+
+            for (let i = 0; i < 3; i++) {
+                const hX = canvas.width - 55 + (i * 18);
+                const hY = 28;
+                ctx.fillStyle = (i < lives) ? "#E74C3C" : "#7F8C8D"; 
+                ctx.beginPath();
+                ctx.moveTo(hX, hY + 5);
+                ctx.bezierCurveTo(hX, hY, hX - 7, hY, hX - 7, hY + 5);
+                ctx.bezierCurveTo(hX - 7, hY + 10, hX, hY + 13, hX, hY + 15);
+                ctx.bezierCurveTo(hX, hY + 13, hX + 7, hY + 10, hX + 7, hY + 5);
+                ctx.bezierCurveTo(hX + 7, hY, hX, hY, hX, hY + 5);
+                ctx.fill();
+            }
+        }
+
+        // ==========================================
+        // DIBUJAR EL EMOJI DE PATITA 🐾
+        // ==========================================
+        function drawPawPrint(x, y, size, rotation, alpha) {
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.rotate(rotation);
+            ctx.globalAlpha = alpha;
+            
+            // Configuramos el tamaño y la fuente para el emoji
+            ctx.font = `${size * 2}px Arial`; // Multiplicamos por 2 para que se vea bien grande
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            
+            // Escribimos el emoji de la huella
+            ctx.fillText("🐾", 0, 0);
+            
+            ctx.restore();
+        }
+
+        /* ==========================================
+           8. BUCLE PRINCIPAL DE DIBUJO
+           ========================================== */
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            if (gameState === 'TRANSITION_TO_END') {
+                drawBackground();    
+                drawSpeedEffects();  
+                drawObstacles();     
+                drawDogBack(player.x, player.y); 
+                drawVignette();
+                
+                ctx.fillStyle = `rgba(0, 0, 0, ${fadeAlpha})`;
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                return;
+            }
+
+            if (gameState === 'START_SCREEN') {
+                const bgGrad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+                bgGrad.addColorStop(0, "#2c3e50");
+                bgGrad.addColorStop(1, "#1a252f");
+                ctx.fillStyle = bgGrad;
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                pawPrints.forEach(p => drawPawPrint(p.x, p.y, p.size, p.rotation, p.life));
+
+                ctx.fillStyle = "#111"; ctx.font = "bold 34px 'Segoe UI', sans-serif"; ctx.textAlign = "center";
+                ctx.fillText("LUCAS AL ATAQUE", canvas.width / 2 + 3, 203);
+                ctx.fillStyle = "#F1C40F"; 
+                ctx.fillText("LUCAS AL ATAQUE", canvas.width / 2, 200);
+                
+                if (dogStartImg.complete && dogStartImg.naturalHeight !== 0) {
+                    const imgSize = 200; 
+                    ctx.drawImage(dogStartImg, canvas.width / 2 - imgSize / 2, 240, imgSize, imgSize);
+                }
+
+                ctx.fillStyle = "#fff"; ctx.font = "bold 18px 'Segoe UI', sans-serif";
+                if (Math.floor(realTime * 2) % 2 === 0) {
+                    ctx.fillText("Haz clic para comenzar", canvas.width / 2, 480);
+                }
+                
+                ctx.textAlign = "start";
+                return;
+            }
+
+            if (gameState === 'VIDEO_INTRO' || gameState === 'FINAL_VIDEO') return;
+
+            if (gameState === 'FINAL_SCREEN') {
+                ctx.fillStyle = "#1f2937";
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                
+                ctx.fillStyle = "#E74C3C"; ctx.font = "bold 28px 'Segoe UI', sans-serif"; ctx.textAlign = "center";
+                ctx.fillText("FIN DEL JUEGO", canvas.width / 2, 200);
+
+                ctx.fillStyle = "#fff"; ctx.font = "16px 'Segoe UI', sans-serif";
+                ctx.fillText("Lucas chocó seguido y lo atraparon", canvas.width / 2, 260);
+                ctx.fillText("sus dueñas para evitar que", canvas.width / 2, 280);
+                ctx.fillText("muerda más personas.", canvas.width / 2, 300);
+
+                ctx.fillStyle = "#F1C40F"; ctx.font = "bold 20px 'Segoe UI', sans-serif";
+                ctx.fillText("Puntaje Final: " + score, canvas.width / 2, 360);
+                ctx.fillText("Personas mordidas: " + caughtPeople, canvas.width / 2, 390);
+                
+                drawButton("¡A JUGAR!", "#2ECC71", "#27AE60");
+                ctx.textAlign = "start";
+                return;
+            }
+
+            if (gameState === 'MENU') {
+                drawBackground(); 
+                drawSpeedEffects(); 
+                
+                ctx.fillStyle = "#F1C40F"; ctx.font = "bold 32px 'Segoe UI', sans-serif"; ctx.textAlign = "center";
+                ctx.strokeStyle = "#111"; ctx.lineWidth = 6;
+                ctx.strokeText("LUCAS AL ATAQUE", canvas.width / 2, 200);
+                ctx.fillText("LUCAS AL ATAQUE", canvas.width / 2, 200);
+                
+                ctx.fillStyle = "#fff"; ctx.strokeStyle = "#111"; ctx.lineWidth = 3;
+                ctx.beginPath(); ctx.roundRect(40, 260, 280, 90, 12); ctx.fill(); ctx.stroke();
+                ctx.fillStyle = "#111"; ctx.font = "bold 16px 'Segoe UI', sans-serif";
+                ctx.fillText("Atrapa a los peatones", canvas.width / 2, 290);
+                ctx.fillText("Esquiva los obstáculos", canvas.width / 2, 315);
+                
+                drawButton("¡A JUGAR!", "#2ECC71", "#27AE60");
+                drawVignette();
+                return;
+            }
+
+            drawBackground();    
+            drawSpeedEffects();  
+            drawObstacles();     
+            drawDogBack(player.x, player.y); 
+            drawVignette();      
+
+            ctx.fillStyle = "rgba(44, 62, 80, 0.8)"; 
+            ctx.strokeStyle = "#1ABC9C"; ctx.lineWidth = 3;
+            ctx.beginPath(); ctx.roundRect(10, 10, 170, 45, 10); ctx.fill(); ctx.stroke();
+            ctx.fillStyle = "#fff"; ctx.font = "bold 22px 'Segoe UI', sans-serif";
+            ctx.fillText("PUNTOS: " + score, 25, 40);
+
+            drawLives(); 
+
+            if (isBiting) {
+                drawBitePopup();
+            }
+
+            if (gameState === 'GAMEOVER') {
+                ctx.fillStyle = "rgba(0, 0, 0, 0.85)"; ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = "#F39C12"; ctx.font = "bold 32px 'Segoe UI', sans-serif"; ctx.textAlign = "center";
+                ctx.strokeStyle = "#fff"; ctx.lineWidth = 4;
+                ctx.strokeText("¡AY!", canvas.width / 2, 200);
+                ctx.fillText("¡AY!", canvas.width / 2, 200);
+
+                ctx.fillStyle = "#fff"; ctx.font = "bold 20px 'Segoe UI', sans-serif";
+                ctx.fillText("Te quedan " + lives + " intentos", canvas.width / 2, 260);
+                
+                if (lives > 0) {
+                    drawButton("REINTENTAR", "#F39C12", "#D35400");
+                } else {
+                    drawButton("VER FINAL", "#E74C3C", "#C0392B");
+                }
+                ctx.textAlign = "start";
+            }
+        }
+
+        function loop() {
+            update(); 
+            draw();   
+            requestAnimationFrame(loop); 
+        }
+
+        loop(); 
+    </script>
+</body>
+</html>
