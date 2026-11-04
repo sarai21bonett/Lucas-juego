@@ -3,8 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Lucas al Ataque - Edición Progresiva</title>
+    <title>Lucas al Ataque - Edición Final</title>
     <style>
+        /* ==========================================
+           ESTILOS CSS GENERALES Y DEL CONTENEDOR
+           ========================================== */
         * { box-sizing: border-box; user-select: none; -webkit-user-select: none; }
         body {
             background: #0f172a; color: #fff; margin: 0;
@@ -12,35 +15,35 @@
             min-height: 100vh; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             overflow: hidden;
         }
+        
+        /* El contenedor que simula la pantalla de un celular */
         #gameContainer {
             position: relative; box-shadow: 0 20px 50px rgba(0,0,0,0.8), 0 0 0 4px #1e293b;
             border-radius: 12px; overflow: hidden; background: #000;
             width: 360px; height: 640px;
         }
+        
         canvas { background: #87CEEB; display: block; touch-action: none; }
         
+        /* ==========================================
+           ESTILOS DE LOS VIDEOS
+           ========================================== */
         .game-video {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            object-fit: contain; 
-            background-color: #000; 
-            z-index: 10;
-            display: none; 
-            opacity: 0; 
-            transition: opacity 1s ease-in-out; 
+            object-fit: contain; /* Hace que el video no se deforme */
+            background-color: #000; z-index: 10; /* Se pone por encima del canvas */
+            display: none; opacity: 0; transition: opacity 1s ease-in-out; 
         }
         
-        .video-instant {
-            transition: none !important; 
-        }
+        /* Clase extra para que el video de intro entre de golpe sin desvanecerse */
+        .video-instant { transition: none !important; }
 
+        /* Botón para saltar los videos */
         #skipBtn {
             position: absolute; top: 15px; right: 15px; z-index: 20;
-            background: rgba(0, 0, 0, 0.6);
-            color: white; border: 2px solid white;
-            padding: 8px 15px; border-radius: 20px;
-            font-weight: bold; font-size: 14px;
-            cursor: pointer; display: none;
-            transition: background 0.3s;
+            background: rgba(0, 0, 0, 0.6); color: white; border: 2px solid white;
+            padding: 8px 15px; border-radius: 20px; font-weight: bold; font-size: 14px;
+            cursor: pointer; display: none; transition: background 0.3s;
         }
         #skipBtn:hover { background: rgba(255, 255, 255, 0.3); }
 
@@ -52,72 +55,87 @@
 </head>
 <body>
 
+    <!-- ==========================================
+         ESTRUCTURA HTML (VIDEOS Y CANVAS)
+         ========================================== -->
     <div id="gameContainer">
         <button id="skipBtn">OMITIR ⏭</button>
 
+        <!-- Video de introducción -->
         <video id="introVideo" class="game-video video-instant" playsinline>
             <source src="final.mp4" type="video/mp4">
         </video>
 
+        <!-- Video del final -->
         <video id="endVideo" class="game-video" playsinline>
             <source src="intro.mp4" type="video/mp4">
         </video>
         
+        <!-- El lienzo donde se dibuja el juego -->
         <canvas id="gameCanvas" width="360" height="640"></canvas>
     </div>
     <p class="controls-hint">PC: ← → para moverte.<br>Móvil: Desliza el dedo por la pantalla.</p>
 
     <script>
+        /* ==========================================
+           1. CONFIGURACIÓN Y VARIABLES GLOBALES
+           ========================================== */
         const canvas = document.getElementById("gameCanvas");
         const ctx = canvas.getContext("2d");
         const introVideo = document.getElementById("introVideo");
         const endVideo = document.getElementById("endVideo");
         const skipBtn = document.getElementById("skipBtn");
 
-        // --- CARGA DE IMÁGENES ---
-        const bgImg = new Image();
-        bgImg.src = 'fondo.jpg'; 
+        // --- COLORES Y BORDES (Aquí estaba el error, faltaban estas dos) ---
+        const OUTLINE = "#111"; // Color del borde de los dibujos
+        const LW = 2.5;         // Grosor de la línea del borde
 
+        // --- CARGA DE IMÁGENES ---
+        const bgImg = new Image(); bgImg.src = 'fondo.jpg'; 
+        
         const pedImgs = [new Image(), new Image(), new Image(), new Image()];
         pedImgs[0].src = 'img1.png'; 
         pedImgs[1].src = 'img2.png'; 
         pedImgs[2].src = 'img3.png'; 
         pedImgs[3].src = 'img4.png'; 
 
-        const dogStartImg = new Image();
-        dogStartImg.src = 'lucas.jpeg'; 
+        const lucasGameImg = new Image(); lucasGameImg.src = 'lucas_espalda.png'; 
+        const lucasStartImg = new Image(); lucasStartImg.src = 'lucas.jpeg'; 
 
-        const OUTLINE = "#111"; 
-        const LW = 2.5; 
-
+        // --- VARIABLES DE ESTADO ---
         let gameState = 'START_SCREEN'; 
+        
         let animFrame = 0; 
         let realTime = 0;  
         
-        // --- VELOCIDAD INICIAL Y FRECUENCIA ---
         let pathSpeed = 4; 
         let score = 0;     
         let caughtPeople = 0; 
         let lives = 3;     
+        
         let invulnerableTimer = 0; 
         let fadeAlpha = 0; 
 
-        // Variables para el texto flotante
         let floatingTexts = [];
 
+        let mouseX = -100; let mouseY = -100; let isHoveringImg = false;
+        const imgBounds = { x: 70, y: 220, size: 220 }; 
+
         const startBtn = { x: 60, y: 460, width: 240, height: 60 }; 
-        const player = { x: canvas.width / 2, y: canvas.height - 120, targetX: canvas.width / 2 }; 
+        const player = { x: canvas.width / 2, y: canvas.height - 120, targetX: canvas.width / 2 };
         
         let obstacles = [];    
         let obstacleTimer = 0; 
         let spawnRate = 90;    
         let forcedPedestrianCounter = 0; 
         let particles = [];    
+        let pawPrints = [];    
+        let roadOffset = 0;    
+        let dustParticles = []; 
 
-        let pawPrints = [];
-        let roadOffset = 0; 
-
-        // Lógica de videos y botón omitir
+        /* ==========================================
+           2. LÓGICA DE LOS VIDEOS Y CONTROLES
+           ========================================== */
         function startExperience() {
             gameState = 'VIDEO_INTRO';
             introVideo.style.display = 'block';
@@ -137,6 +155,13 @@
             gameState = 'MENU';
         });
 
+        endVideo.addEventListener('ended', () => {
+            endVideo.style.display = 'none';
+            endVideo.style.opacity = 0; 
+            skipBtn.style.display = 'none';
+            gameState = 'FINAL_SCREEN';
+        });
+
         skipBtn.addEventListener('click', () => {
             if (gameState === 'VIDEO_INTRO') {
                 introVideo.pause();
@@ -151,13 +176,6 @@
                 skipBtn.style.display = 'none';
                 gameState = 'FINAL_SCREEN';
             }
-        });
-
-        endVideo.addEventListener('ended', () => {
-            endVideo.style.display = 'none';
-            endVideo.style.opacity = 0; 
-            skipBtn.style.display = 'none';
-            gameState = 'FINAL_SCREEN';
         });
 
         const keys = { ArrowLeft: false, ArrowRight: false };
@@ -182,28 +200,37 @@
             if (keys.hasOwnProperty(e.code)) keys[e.code] = false;
         });
 
-        canvas.addEventListener("click", (e) => {
+        canvas.addEventListener("mousemove", (e) => {
             const rect = canvas.getBoundingClientRect();
-            const clickX = e.clientX - rect.left;
-            const clickY = e.clientY - rect.top;
+            mouseX = e.clientX - rect.left;
+            mouseY = e.clientY - rect.top;
 
+            if (gameState === 'START_SCREEN') {
+                if (mouseX > imgBounds.x && mouseX < imgBounds.x + imgBounds.size &&
+                    mouseY > imgBounds.y && mouseY < imgBounds.y + imgBounds.size) {
+                    isHoveringImg = true;
+                } else {
+                    isHoveringImg = false;
+                }
+            }
+        });
+
+        canvas.addEventListener("mouseleave", () => {
+            isHoveringImg = false;
+        });
+
+        canvas.addEventListener("click", (e) => {
             if (gameState === 'START_SCREEN') {
                 startExperience();
                 return;
             }
             
             if (gameState === 'MENU' || gameState === 'FINAL_SCREEN') {
-                if (clickX >= startBtn.x && clickX <= startBtn.x + startBtn.width &&
-                    clickY >= startBtn.y && clickY <= startBtn.y + startBtn.height) {
-                    startGame();
-                }
+                startGame(); 
             }
             else if (gameState === 'GAMEOVER') {
-                if (clickX >= startBtn.x && clickX <= startBtn.x + startBtn.width &&
-                    clickY >= startBtn.y && clickY <= startBtn.y + startBtn.height) {
-                    if (lives > 0) retryGame();
-                    else playFinalSequence();
-                }
+                if (lives > 0) retryGame();
+                else playFinalSequence();
             }
         });
 
@@ -217,6 +244,9 @@
             }
         }, { passive: false });
 
+        /* ==========================================
+           3. INICIO Y REINICIO DEL JUEGO
+           ========================================== */
         function playFinalSequence() {
             gameState = 'TRANSITION_TO_END'; 
         }
@@ -232,6 +262,7 @@
             obstacles = [];
             particles = [];
             floatingTexts = []; 
+            dustParticles = []; 
             obstacleTimer = 0;
             roadOffset = 0;
             
@@ -247,14 +278,19 @@
             gameState = 'PLAYING';
             obstacles = []; 
             floatingTexts = [];
+            dustParticles = [];
             obstacleTimer = 0;
             invulnerableTimer = 120; 
         }
 
+        /* ==========================================
+           4. EL MOTOR DEL JUEGO (UPDATE)
+           ========================================== */
         function update() {
             realTime += 0.016;
             animFrame += 0.15;
 
+            // --- Lógica de la pantalla de inicio ---
             if (gameState === 'START_SCREEN') {
                 if (Math.random() < 0.08) { 
                     pawPrints.push({
@@ -273,6 +309,7 @@
                 return; 
             }
 
+            // --- Lógica de la transición al final ---
             if (gameState === 'TRANSITION_TO_END') {
                 fadeAlpha += 0.02; 
                 if (fadeAlpha >= 1) {
@@ -311,6 +348,7 @@
 
             if (invulnerableTimer > 0) invulnerableTimer--;
 
+            // Actualiza textos flotantes "+50"
             for (let i = floatingTexts.length - 1; i >= 0; i--) {
                 let ft = floatingTexts[i];
                 ft.y -= 1.5; 
@@ -318,6 +356,7 @@
                 if (ft.life <= 0) floatingTexts.splice(i, 1);
             }
 
+            // Actualiza partículas de polvo
             for (let i = particles.length - 1; i >= 0; i--) {
                 let p = particles[i];
                 p.y += pathSpeed;
@@ -325,6 +364,26 @@
                 if (p.life <= 0) particles.splice(i, 1);
             }
 
+            // Genera el polvo que sale de las patas
+            if (gameState === 'PLAYING' && Math.random() < 0.4) {
+                dustParticles.push({
+                    x: player.x + (Math.random() * 40 - 20),
+                    y: player.y + 5,
+                    size: 2 + Math.random() * 4,
+                    life: 15 + Math.random() * 10,
+                    vx: (Math.random() - 0.5) * 2
+                });
+            }
+            // Mueve el polvo
+            for (let i = dustParticles.length - 1; i >= 0; i--) {
+                let d = dustParticles[i];
+                d.y += pathSpeed * 0.5;
+                d.x += d.vx;
+                d.life--;
+                if (d.life <= 0) dustParticles.splice(i, 1);
+            }
+
+            // --- Movimiento del jugador ---
             if (keys.ArrowLeft) player.targetX -= 7;
             if (keys.ArrowRight) player.targetX += 7;
             
@@ -333,36 +392,31 @@
             if (player.x < 40) player.x = 40;
             if (player.x > canvas.width - 40) player.x = canvas.width - 40;
 
-            // --- NUEVA LÓGICA DE DIFICULTAD PROGRESIVA ---
-            // Solo empieza a subir después de 20 mordidas.
-            if (caughtPeople < 10) {
-                // Durante las primeras 20, todo se mantiene suave y constante
+            // =======================================================
+            // LÓGICA DE DIFICULTAD PROGRESIVA (A PARTIR DE 15)
+            // =======================================================
+            if (caughtPeople < 15) {
+                // Del 0 al 14, el juego es tranquilo.
                 pathSpeed = 4;
                 spawnRate = 90;
             } else {
-                // A partir de la mordida 21, empieza a subir poco a poco.
-                // Le restamos 20 para que el incremento empiece desde 0.
-                const extraDifficulty = caughtPeople - 20;
-                pathSpeed = 4 + (extraDifficulty * 0.2); // Sube lento
-                spawnRate = Math.max(45, 90 - (extraDifficulty * 2)); // No baja de 45
+                // A partir de la persona 15, la dificultad empieza a subir.
+                const extraDifficulty = caughtPeople - 7;
+                // La velocidad sube 0.2 por cada persona extra.
+                pathSpeed = 4 + (extraDifficulty * 0.2); 
+                // La frecuencia de obstáculos baja (aparecen más seguido).
+                spawnRate = Math.max(45, 90 - (extraDifficulty * 2)); 
             }
 
+            // Mueve las líneas de la carretera
             roadOffset += pathSpeed;
             if (roadOffset >= 60) roadOffset = 0; 
 
-            if (Math.random() < 0.3) {
-                particles.push({
-                    x: player.x + (Math.random() * 20 - 10),
-                    y: canvas.height - 70,
-                    size: 3 + Math.random() * 5,
-                    life: 20 + Math.random() * 20
-                });
-            }
-
+            // --- Generación de obstáculos ---
             obstacleTimer++;
             if (obstacleTimer > spawnRate) {
                 let numObstacles = 1;
-                // Los obstáculos dobles salen después de la mordida 25
+                // A partir de 15 mordidas salen 2 obstáculos a la vez
                 if (caughtPeople >= 15) numObstacles = 2; 
 
                 let lanes = [0, 1, 2].sort(() => Math.random() - 0.5);
@@ -397,6 +451,7 @@
 
                     let imgIdx = Math.floor(Math.random() * pedImgs.length);
                     let yOffset = index === 1 ? 60 : 0; 
+                    
                     let startAlpha = (obsType === 'pedestrian') ? 1 : 0;
 
                     obstacles.push({ 
@@ -412,6 +467,7 @@
                 obstacleTimer = 0;
             }
 
+            // --- Actualizar obstáculos y colisiones ---
             for (let i = obstacles.length - 1; i >= 0; i--) {
                 const obs = obstacles[i];
                 obs.y += pathSpeed;
@@ -452,10 +508,12 @@
             }
         }
 
-        // --- FUNCIONES DE DIBUJO ---
+        /* ==========================================
+           5. FUNCIONES DE DIBUJO EN EL CANVAS
+           ========================================== */
         function drawShadow(x, y, w, h) {
             const grad = ctx.createRadialGradient(x, y, 0, x, y, w);
-            grad.addColorStop(0, "rgba(0, 0, 0, 0.4)");
+            grad.addColorStop(0, "rgba(0, 0, 0, 0.5)");
             grad.addColorStop(1, "rgba(0, 0, 0, 0)");
             ctx.fillStyle = grad;
             ctx.beginPath(); ctx.ellipse(x, y, w, h, 0, 0, Math.PI * 2); ctx.fill();
@@ -492,70 +550,58 @@
             ctx.restore();
         }
 
+        // --- DIBUJO DE LUCAS (Con el efecto de las patas divididas) ---
         function drawDogBack(x, y) {
             if (invulnerableTimer > 0 && Math.floor(realTime * 20) % 2 === 0) return;
 
-            ctx.save();
-            ctx.translate(x, y);
-            ctx.scale(1.1, 1.1); 
-            ctx.translate(-x, -y);
+            const dogW = 110; 
+            const dogH = 110;
 
-            ctx.strokeStyle = OUTLINE; ctx.lineWidth = LW;
-            
             let walk = 0;
             if (gameState === 'PLAYING') {
-                walk = Math.sin(animFrame * 6) * 8;
+                walk = Math.sin(animFrame * 5) * 4; 
             }
 
-            drawShadow(x, y + 30, 25, 8);
+            ctx.save();
+            
+            // 1. Cuerpo
+            ctx.drawImage(
+                lucasGameImg, 
+                0, 0, lucasGameImg.width, lucasGameImg.height * 0.55, 
+                x - dogW / 2, y - dogH + 20, dogW, dogH * 0.55 
+            );
 
-            const tailGrad = ctx.createLinearGradient(x - 20, y - 20, x - 15, y);
-            tailGrad.addColorStop(0, "#D2B48C");
-            tailGrad.addColorStop(1, "#C19A6B");
-            ctx.strokeStyle = tailGrad; ctx.lineWidth = 8; ctx.lineCap = "round";
-            ctx.beginPath();
-            ctx.moveTo(x - 15, y - 5);
-            ctx.quadraticCurveTo(x - 25, y - 15 + walk, x - 20, y - 25 + walk);
-            ctx.stroke();
+            // 2. Pata Izquierda
+            ctx.save();
+            ctx.translate(0, walk); 
+            ctx.drawImage(
+                lucasGameImg, 
+                0, lucasGameImg.height * 0.5, lucasGameImg.width * 0.5, lucasGameImg.height * 0.5, 
+                x - dogW / 2, y - dogH * 0.35, dogW * 0.5, dogH * 0.45
+            );
+            ctx.restore();
 
-            ctx.fillStyle = "#F5DEB3";
-            ctx.beginPath(); ctx.roundRect(x - 14, y + 10 + walk, 8, 20, 4); ctx.fill(); ctx.stroke();
-            ctx.beginPath(); ctx.roundRect(x + 6, y + 10 - walk, 8, 20, 4); ctx.fill(); ctx.stroke();
+            // 3. Pata Derecha
+            ctx.save();
+            ctx.translate(0, -walk); 
+            ctx.drawImage(
+                lucasGameImg, 
+                lucasGameImg.width * 0.5, lucasGameImg.height * 0.5, lucasGameImg.width * 0.5, lucasGameImg.height * 0.5, 
+                x, y - dogH * 0.35, dogW * 0.5, dogH * 0.45
+            );
+            ctx.restore();
 
-            const bodyGrad = ctx.createLinearGradient(x - 15, y - 15, x + 15, y + 10);
-            bodyGrad.addColorStop(0, "#E6C280");
-            bodyGrad.addColorStop(1, "#C19A6B");
-            ctx.fillStyle = bodyGrad;
-            ctx.beginPath(); ctx.roundRect(x - 18, y - 15, 36, 28, 12); ctx.fill(); ctx.stroke();
+            ctx.restore();
+        }
 
-            ctx.fillStyle = "#FFF8DC";
-            ctx.beginPath(); ctx.ellipse(x - 6, y - 5, 10, 14, -0.2, 0, Math.PI*2); ctx.fill();
-            ctx.beginPath(); ctx.ellipse(x + 10, y + 5, 7, 12, 0.2, 0, Math.PI*2); ctx.fill();
-
-            const headGrad = ctx.createRadialGradient(x - 5, y - 40, 2, x, y - 35, 18);
-            headGrad.addColorStop(0, "#E6C280");
-            headGrad.addColorStop(1, "#C19A6B");
-            ctx.fillStyle = headGrad;
-            ctx.beginPath(); ctx.arc(x, y - 35, 18, 0, Math.PI*2); ctx.fill(); ctx.stroke();
-
-            const earGrad = ctx.createLinearGradient(x - 20, y - 40, x - 10, y - 20);
-            earGrad.addColorStop(0, "#C19A6B");
-            earGrad.addColorStop(1, "#8B5A2B");
-            ctx.fillStyle = earGrad;
-            ctx.beginPath(); ctx.ellipse(x - 15, y - 35, 6, 14, -0.5, 0, Math.PI*2); ctx.fill(); ctx.stroke();
-            ctx.beginPath(); ctx.ellipse(x + 15, y - 35, 6, 14, 0.5, 0, Math.PI*2); ctx.fill(); ctx.stroke();
-
-            ctx.fillStyle = "#FFF8DC";
-            ctx.beginPath(); ctx.ellipse(x, y - 45, 7, 6, 0, 0, Math.PI*2); ctx.fill(); ctx.stroke();
-
-            ctx.strokeStyle = "#009688"; ctx.lineWidth = 5;
-            ctx.beginPath(); ctx.moveTo(x - 15, y - 18); ctx.lineTo(x + 15, y - 18); ctx.stroke();
-            const plaqueGrad = ctx.createRadialGradient(x, y - 18, 1, x, y - 18, 5);
-            plaqueGrad.addColorStop(0, "#FFF59D");
-            plaqueGrad.addColorStop(1, "#F1C40F");
-            ctx.fillStyle = plaqueGrad;
-            ctx.beginPath(); ctx.arc(x, y - 18, 4, 0, Math.PI*2); ctx.fill(); ctx.stroke();
-
+        function drawDust() {
+            ctx.save();
+            dustParticles.forEach(d => {
+                ctx.fillStyle = `rgba(139, 115, 85, ${d.life / 25})`; 
+                ctx.beginPath();
+                ctx.arc(d.x, d.y, d.size, 0, Math.PI * 2);
+                ctx.fill();
+            });
             ctx.restore();
         }
 
@@ -723,6 +769,9 @@
             });
         }
 
+        /* ==========================================
+           6. BUCLE PRINCIPAL DE DIBUJO
+           ========================================== */
         function draw() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -731,6 +780,7 @@
                 drawSpeedEffects();  
                 drawObstacles();     
                 drawDogBack(player.x, player.y); 
+                drawDust();
                 drawVignette();
                 
                 ctx.fillStyle = `rgba(0, 0, 0, ${fadeAlpha})`;
@@ -752,14 +802,38 @@
                 ctx.fillStyle = "#F1C40F"; 
                 ctx.fillText("LUCAS AL ATAQUE", canvas.width / 2, 200);
                 
-                if (dogStartImg.complete && dogStartImg.naturalHeight !== 0) {
-                    const imgSize = 200; 
-                    ctx.drawImage(dogStartImg, canvas.width / 2 - imgSize / 2, 240, imgSize, imgSize);
+                if (lucasStartImg.complete && lucasStartImg.naturalHeight !== 0) {
+                    let currentSize = imgBounds.size;
+                    if (isHoveringImg) currentSize += 5;
+
+                    const imgX = canvas.width / 2 - currentSize / 2;
+                    const imgY = imgBounds.y + (imgBounds.size - currentSize) / 2; 
+                    const padding = 8; 
+
+                    ctx.fillStyle = "rgba(0, 0, 0, 0.4)";
+                    ctx.beginPath();
+                    ctx.roundRect(imgX - padding + 4, imgY - padding + 4, currentSize + padding * 2, currentSize + padding * 2, 15);
+                    ctx.fill();
+
+                    ctx.fillStyle = "#ffffff";
+                    ctx.strokeStyle = isHoveringImg ? "#F1C40F" : "#1f2937"; 
+                    ctx.lineWidth = 4;
+                    ctx.beginPath();
+                    ctx.roundRect(imgX - padding, imgY - padding, currentSize + padding * 2, currentSize + padding * 2, 15);
+                    ctx.fill();
+                    ctx.stroke();
+
+                    ctx.save();
+                    ctx.beginPath();
+                    ctx.roundRect(imgX, imgY, currentSize, currentSize, 10);
+                    ctx.clip(); 
+                    ctx.drawImage(lucasStartImg, imgX, imgY, currentSize, currentSize);
+                    ctx.restore();
                 }
 
                 ctx.fillStyle = "#fff"; ctx.font = "bold 18px 'Segoe UI', sans-serif";
                 if (Math.floor(realTime * 2) % 2 === 0) {
-                    ctx.fillText("Haz clic para comenzar", canvas.width / 2, 480);
+                    ctx.fillText("Haz clic en cualquier lugar", canvas.width / 2, 480);
                 }
                 
                 ctx.textAlign = "start";
@@ -813,6 +887,7 @@
             drawSpeedEffects();  
             drawObstacles();     
             drawDogBack(player.x, player.y); 
+            drawDust(); 
             drawFloatingTexts(); 
             drawVignette();      
 
@@ -843,6 +918,9 @@
             }
         }
 
+        /* ==========================================
+           7. INICIAR EL BUCLE
+           ========================================== */
         function loop() {
             update(); 
             draw();   
